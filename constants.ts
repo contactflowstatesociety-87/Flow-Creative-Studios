@@ -78,8 +78,17 @@ export const SCENE: DropdownOption[] = [
   { id: '8', label: 'Vacation Resort Walk', tooltip: 'Sun and palm trees; signals leisure.' }
 ];
 
-// Updated to only include aspect ratios supported by nano banana series models (Gemini 3 Pro Image)
-export const ASPECT_RATIOS = ['9:16', '1:1', '16:9', '3:4', '4:3'];
+export const BRAND_PRESETS: DropdownOption[] = [
+  { id: 'none', label: 'None', tooltip: 'No brand specific styling.' },
+  { id: 'nike', label: 'NIKE', tooltip: 'High-energy, athletic, dramatic shadows, grit, performance focus.' },
+  { id: 'apple', label: 'Apple', tooltip: 'Ultra-minimal, clean white/gray backgrounds, soft product shadows, tech-chic.' },
+  { id: 'northface', label: 'North Face', tooltip: 'Rugged, earthy tones, natural outdoor lighting, durability focus.' },
+  { id: 'liquiddeath', label: 'Liquid Death', tooltip: 'Gritty, punk-rock aesthetic, high contrast, dark metal vibes.' },
+  { id: 'malbon', label: 'Malbon Golf', tooltip: 'Heritage sportswear, casual luxury, lush green natural tones, lifestyle focus.' }
+];
+
+export const QUALITY_OPTIONS = ['2K', '4K', '6K'];
+export const ASPECT_RATIOS = ['1:1', '2:3', '3:2', '3:4', '4:3', '9:16', '16:9', '21:9'];
 export const VIDEO_DURATIONS = ['6s', '9s', '15s'];
 
 export const SMART_SUGGESTION_RULES = [

@@ -19,6 +19,13 @@ export interface SelectionState {
   aspectRatio: string;
   format: string;
   duration?: string;
+  creativeDeviation: boolean;
+  thinkingMode: boolean;
+  brandPreset: string;
+  quality: string;
+  chaos: number;
+  stylization: number;
+  modelSelection: string;
 }
 
 export interface ProjectMetadata {
