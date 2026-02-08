@@ -4,9 +4,14 @@ import { GoogleGenAI, Type } from "@google/genai";
 export class GeminiService {
   /**
    * Orchestrator to compile high-fidelity prompts using Gemini 3 Pro.
+   * Now considers if references are provided to emphasize fidelity in the instructions.
    */
-  async compilePrompt(data: any): Promise<string> {
+  async compilePrompt(data: any, hasReferences: boolean): Promise<string> {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const fidelityInstruction = hasReferences 
+      ? "CRITICAL: Maintain 100% exact fidelity to the provided reference images. Do not deviate from the product's color, logo, materials, or structural details."
+      : "Maintain strict realism and product consistency.";
+
     const response = await ai.models.generateContent({
       model: "gemini-3-pro-preview",
       contents: `Compile a high-fidelity image/video generation prompt based on these inputs: 
@@ -17,7 +22,8 @@ export class GeminiService {
       Style: ${data.style}
       Scene: ${data.scene}
       User Prompt: ${data.userPrompt}
-      Constraints: Strict fidelity, preserve logos, no hallucinations.
+      ${fidelityInstruction}
+      Constraints: Preserve logos exactly, no hallucinations, zero creative deviation from physical product traits.
       
       Return ONLY the final prompt string.`,
     });
@@ -26,14 +32,30 @@ export class GeminiService {
 
   /**
    * Photo Generation using gemini-3-pro-image-preview.
-   * Iterates through response parts to find image data as per SDK guidelines.
+   * Now accepts and sends reference images (base64) to the model for image-to-image fidelity.
    */
-  async generatePhotos(prompt: string, aspectRatio: string): Promise<string[]> {
+  async generatePhotos(prompt: string, aspectRatio: string, references: string[]): Promise<string[]> {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    
+    // Prepare parts: Text prompt followed by image parts
+    const parts: any[] = [{ text: prompt }];
+    
+    // Add reference images to the request if they exist
+    references.forEach(ref => {
+      const mimeType = ref.split(';')[0].split(':')[1];
+      const base64Data = ref.split(',')[1];
+      parts.push({
+        inlineData: {
+          data: base64Data,
+          mimeType: mimeType
+        }
+      });
+    });
+
     const response = await ai.models.generateContent({
       model: 'gemini-3-pro-image-preview',
       contents: {
-        parts: [{ text: prompt }],
+        parts: parts,
       },
       config: {
         imageConfig: {
@@ -58,9 +80,11 @@ export class GeminiService {
    * Video Generation using veo-3.1-fast-generate-preview.
    * Implements real polling and media retrieval logic.
    */
-  async generateVideo(prompt: string, aspectRatio: string): Promise<string> {
+  async generateVideo(prompt: string, aspectRatio: string, references: string[]): Promise<string> {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    let operation = await ai.models.generateVideos({
+    
+    // For Video, we use the first reference image as a starting frame if available
+    const videoConfig: any = {
       model: 'veo-3.1-fast-generate-preview',
       prompt: prompt,
       config: {
@@ -68,7 +92,16 @@ export class GeminiService {
         resolution: '1080p',
         aspectRatio: (aspectRatio === '9:16' || aspectRatio === '16:9') ? aspectRatio : '16:9'
       }
-    });
+    };
+
+    if (references.length > 0) {
+      videoConfig.image = {
+        imageBytes: references[0].split(',')[1],
+        mimeType: references[0].split(';')[0].split(':')[1]
+      };
+    }
+
+    let operation = await ai.models.generateVideos(videoConfig);
 
     // Polling for video completion
     while (!operation.done) {

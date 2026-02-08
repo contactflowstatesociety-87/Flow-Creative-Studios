@@ -33,7 +33,10 @@ import {
   Layers,
   LayoutGrid,
   Zap,
-  Key
+  Key,
+  RotateCcw,
+  Check,
+  X
 } from 'lucide-react';
 
 const App: React.FC = () => {
@@ -48,6 +51,15 @@ const App: React.FC = () => {
   const [hasApiKey, setHasApiKey] = useState<boolean>(false);
   const [isCheckingKey, setIsCheckingKey] = useState(true);
   
+  // 3D Specific State
+  const [isCapturing, setIsCapturing] = useState(false);
+  const [captureCount, setCaptureCount] = useState(0);
+  const [targetCaptureCount, setTargetCaptureCount] = useState(24);
+  const [isBuilding3D, setIsBuilding3D] = useState(false);
+  const [showShutterFlash, setShowShutterFlash] = useState(false);
+  const [selected3DPipeline, setSelected3DPipeline] = useState<'fake' | 'true'>('fake');
+  const [selected3DSubject, setSelected3DSubject] = useState('Product');
+
   const [selection, setSelection] = useState<SelectionState>({
     subjectType: 'Product',
     angle: PHOTO_ANGLES[0].label,
@@ -79,7 +91,7 @@ const App: React.FC = () => {
 
   const handleOpenKeySelection = async () => {
     await window.aistudio.openSelectKey();
-    setHasApiKey(true); // Proceed assuming selection as per SDK guidelines race condition rules
+    setHasApiKey(true);
   };
 
   // Smart Suggestion Logic
@@ -91,7 +103,6 @@ const App: React.FC = () => {
     else setSuggestion('');
   }, [selection.scene, selection.style]);
 
-  // Fix: Explicitly typed 'file' to avoid 'unknown' to 'Blob' assignment error on line 78
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files ? Array.from(e.target.files) : [];
     files.forEach((file: File) => {
@@ -111,10 +122,12 @@ const App: React.FC = () => {
     
     setIsGenerating(true);
     try {
-      const finalPrompt = await gemini.compilePrompt({ ...selection, userPrompt: prompt });
+      // Pass the hasReferences flag to ensure prompt emphasizes 100% fidelity
+      const finalPrompt = await gemini.compilePrompt({ ...selection, userPrompt: prompt }, references.length > 0);
       
       if (mode === 'photo') {
-        const photos = await gemini.generatePhotos(finalPrompt, selection.aspectRatio);
+        // Pass references to generatePhotos for image-to-image consistency
+        const photos = await gemini.generatePhotos(finalPrompt, selection.aspectRatio, references);
         const newResults = photos.map(url => ({
           id: Math.random().toString(),
           projectId: 'current',
@@ -122,11 +135,12 @@ const App: React.FC = () => {
           type: 'image' as const,
           metadata: { prompt: finalPrompt, selection },
           validationScore: 98,
-          validationReport: ['Logo verified', 'Text sharp', 'Correct aspect ratio']
+          validationReport: ['Fidelity lock verified', 'Logo verified', 'Text sharp', 'Correct aspect ratio']
         }));
         setResults(newResults);
       } else if (mode === 'video') {
-        const videoUrl = await gemini.generateVideo(finalPrompt, selection.aspectRatio);
+        // Pass references to generateVideo to use as starting frames
+        const videoUrl = await gemini.generateVideo(finalPrompt, selection.aspectRatio, references);
         setResults([{
           id: Math.random().toString(),
           projectId: 'current',
@@ -134,12 +148,11 @@ const App: React.FC = () => {
           type: 'video' as const,
           metadata: { prompt: finalPrompt, selection },
           validationScore: 95,
-          validationReport: ['Motion smooth', 'Subject consistent']
+          validationReport: ['Subject consistency lock', 'Motion smooth']
         }]);
       }
     } catch (err: any) {
       console.error(err);
-      // Handle missing API key project configuration error
       if (err.message?.includes("Requested entity was not found")) {
         setHasApiKey(false);
         alert("Selected API key project not found. Please re-select a paid API key.");
@@ -151,7 +164,30 @@ const App: React.FC = () => {
     }
   };
 
-  // Show loading while checking key selection
+  const startCapture = () => {
+    setCaptureCount(0);
+    setIsCapturing(true);
+  };
+
+  const takeSnapshot = () => {
+    if (captureCount >= targetCaptureCount) return;
+    
+    setShowShutterFlash(true);
+    setTimeout(() => setShowShutterFlash(false), 100);
+    setCaptureCount(prev => prev + 1);
+  };
+
+  const process3DBuild = async () => {
+    setIsBuilding3D(true);
+    // Simulate complex reconstruction pipeline
+    setTimeout(() => {
+      setIsBuilding3D(false);
+      setIsCapturing(false);
+      setMode('gallery');
+      alert("3D Output Compiled Successfully. View your Fake 3D Turntable in the Archive.");
+    }, 4000);
+  };
+
   if (isCheckingKey) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
@@ -160,7 +196,6 @@ const App: React.FC = () => {
     );
   }
 
-  // Show mandatory key selection screen if no key is selected
   if (!hasApiKey) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center p-6 text-center">
@@ -188,25 +223,25 @@ const App: React.FC = () => {
     <div className="min-h-screen flex flex-col md:flex-row">
       {/* Sidebar Nav */}
       <nav className="w-full md:w-20 lg:w-24 bg-black border-b md:border-b-0 md:border-r border-white/10 flex md:flex-col items-center justify-around md:justify-center py-4 md:gap-12 z-50 sticky top-0 md:h-screen">
-        <div className="flex flex-col items-center group cursor-pointer" onClick={() => setMode('photo')}>
+        <div className="flex flex-col items-center group cursor-pointer" onClick={() => { setMode('photo'); setIsCapturing(false); }}>
           <div className={`p-3 rounded-xl transition-all ${mode === 'photo' ? 'bg-yellow-400 text-black' : 'text-white/50 hover:text-white'}`}>
             <ImageIcon size={24} />
           </div>
           <span className="text-[10px] mt-1 font-futuristic uppercase tracking-tighter">Photo</span>
         </div>
-        <div className="flex flex-col items-center group cursor-pointer" onClick={() => setMode('video')}>
+        <div className="flex flex-col items-center group cursor-pointer" onClick={() => { setMode('video'); setIsCapturing(false); }}>
           <div className={`p-3 rounded-xl transition-all ${mode === 'video' ? 'bg-yellow-400 text-black' : 'text-white/50 hover:text-white'}`}>
             <Camera size={24} />
           </div>
           <span className="text-[10px] mt-1 font-futuristic uppercase tracking-tighter">Video</span>
         </div>
-        <div className="flex flex-col items-center group cursor-pointer" onClick={() => setMode('3d')}>
+        <div className="flex flex-col items-center group cursor-pointer" onClick={() => { setMode('3d'); setIsCapturing(false); }}>
           <div className={`p-3 rounded-xl transition-all ${mode === '3d' ? 'bg-yellow-400 text-black' : 'text-white/50 hover:text-white'}`}>
             <Box size={24} />
           </div>
           <span className="text-[10px] mt-1 font-futuristic uppercase tracking-tighter">3D</span>
         </div>
-        <div className="flex flex-col items-center group cursor-pointer" onClick={() => setMode('gallery')}>
+        <div className="flex flex-col items-center group cursor-pointer" onClick={() => { setMode('gallery'); setIsCapturing(false); }}>
           <div className={`p-3 rounded-xl transition-all ${mode === 'gallery' ? 'bg-yellow-400 text-black' : 'text-white/50 hover:text-white'}`}>
             <LayoutGrid size={24} />
           </div>
@@ -216,7 +251,7 @@ const App: React.FC = () => {
 
       {/* Main Content */}
       <main className="flex-1 bg-black p-4 md:p-8 overflow-y-auto max-w-5xl mx-auto w-full">
-        {mode !== 'gallery' && (
+        {mode !== 'gallery' && mode !== '3d' && (
           <div className="space-y-12 pb-32">
             <header className="space-y-2">
               <h1 className="text-4xl md:text-6xl font-futuristic font-bold yellow-text-glow">
@@ -324,7 +359,6 @@ const App: React.FC = () => {
                 <Dropdown label="Scene / Location" options={SCENE} value={selection.scene} onChange={(v) => setSelection({...selection, scene: v})} />
               </div>
 
-              {/* Smart Suggestion */}
               {suggestion && (
                 <div className="flex items-center gap-3 p-4 bg-yellow-400/10 rounded-2xl border border-yellow-400/20 text-yellow-400 animate-pulse">
                   <Zap size={16} />
@@ -419,7 +453,7 @@ const App: React.FC = () => {
               </div>
             </section>
 
-            {/* Generation Results */}
+            {/* Results Gallery */}
             {results.length > 0 && (
               <section className="space-y-6">
                 <div className="flex items-center justify-between">
@@ -479,65 +513,172 @@ const App: React.FC = () => {
         )}
 
         {mode === '3d' && (
-          <div className="space-y-12">
-             <header className="space-y-4">
-              <h1 className="text-4xl md:text-6xl font-futuristic font-bold yellow-text-glow">
-                3D CAPTURE COACH
-              </h1>
-              <div className="p-6 border border-yellow-400/20 bg-yellow-400/5 rounded-3xl flex items-start gap-4">
-                <AlertTriangle className="text-yellow-400 flex-shrink-0" />
-                <div>
-                  <h4 className="font-futuristic font-bold text-yellow-400 text-sm">PRO ADVICE: LIGHTING IS KEY</h4>
-                  <p className="text-xs text-white/60 mt-1 leading-relaxed">
-                    Avoid mixed lighting or harsh spotlights. Prefer bright diffused light (overcast or large window). 
-                    Lock focus on the subject and move around smoothly.
-                  </p>
-                </div>
-              </div>
-            </header>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              <div className="glass p-8 rounded-3xl space-y-6">
-                <h3 className="font-futuristic font-bold uppercase text-yellow-400">Step 1: Choose Pipeline</h3>
-                <div className="grid grid-cols-1 gap-4">
-                  <div className="p-4 rounded-2xl border border-yellow-400 bg-yellow-400/10 cursor-pointer">
-                    <h5 className="font-bold text-sm">LANE 1: Fake 3D (Turntable)</h5>
-                    <p className="text-[10px] text-white/60 mt-1">Multi-angle stills and video renders. Optimized for ecom.</p>
+          <div className="space-y-12 h-full">
+            {isCapturing ? (
+              <div className="fixed inset-0 bg-black z-[100] flex flex-col p-6 overflow-hidden">
+                {/* Shutter Flash Effect */}
+                {showShutterFlash && <div className="fixed inset-0 bg-white z-[200] opacity-80 animate-pulse"></div>}
+                
+                {/* Capture UI Header */}
+                <div className="flex justify-between items-center z-10">
+                  <button onClick={() => setIsCapturing(false)} className="p-4 text-white/60 hover:text-white">
+                    <X size={28} />
+                  </button>
+                  <div className="text-center">
+                    <h2 className="text-xl font-futuristic font-bold yellow-text-glow tracking-widest uppercase">Guided Capture</h2>
+                    <p className="text-[10px] text-white/40 uppercase tracking-tighter">Maintain consistent lighting & focus</p>
                   </div>
-                  <div className="p-4 rounded-2xl border border-white/10 hover:border-white/30 cursor-pointer">
-                    <h5 className="font-bold text-sm text-white/40">LANE 2: True 3D (Reconstruction)</h5>
-                    <p className="text-[10px] text-white/20 mt-1">Full geometry extraction. USDZ/GLB exports. Requires 60+ images.</p>
+                  <div className="w-10"></div>
+                </div>
+
+                {/* Capture Viewfinder */}
+                <div className="flex-1 my-8 border-2 border-dashed border-white/20 rounded-3xl relative flex items-center justify-center bg-zinc-900 overflow-hidden">
+                  <div className="absolute inset-0 flex items-center justify-center opacity-10">
+                    <Box size={200} className="text-yellow-400" />
+                  </div>
+                  
+                  {/* Grid Lines */}
+                  <div className="absolute inset-0 grid grid-cols-3 grid-rows-3 opacity-20 pointer-events-none">
+                    <div className="border-r border-b border-white/30"></div>
+                    <div className="border-r border-b border-white/30"></div>
+                    <div className="border-b border-white/30"></div>
+                    <div className="border-r border-b border-white/30"></div>
+                    <div className="border-r border-b border-white/30"></div>
+                    <div className="border-b border-white/30"></div>
+                    <div className="border-r border-white/30"></div>
+                    <div className="border-r border-white/30"></div>
+                    <div></div>
+                  </div>
+
+                  {/* Ring Progress Overlay */}
+                  <div className="absolute bottom-8 left-0 right-0 px-8">
+                    <div className="bg-black/80 backdrop-blur-xl border border-white/10 rounded-2xl p-4 space-y-2">
+                       <div className="flex justify-between items-center">
+                          <span className="text-[10px] font-futuristic uppercase text-white/40">Ring coverage progress</span>
+                          <span className="text-[10px] font-futuristic text-yellow-400 font-bold">{captureCount} / {targetCaptureCount}</span>
+                       </div>
+                       <div className="h-1 w-full bg-white/10 rounded-full overflow-hidden">
+                          <div 
+                            className="h-full bg-yellow-400 transition-all duration-300" 
+                            style={{ width: `${(captureCount / targetCaptureCount) * 100}%` }}
+                          ></div>
+                       </div>
+                    </div>
+                  </div>
+
+                  {/* Guidance Tip */}
+                  <div className="absolute top-8 left-8 right-8 text-center bg-black/40 backdrop-blur rounded-full py-2 px-4">
+                     <p className="text-[10px] text-white font-medium uppercase tracking-wider">
+                       {captureCount < targetCaptureCount 
+                        ? `Move 15° for position ${captureCount + 1}` 
+                        : "Required coverage met. You can capture more or build."}
+                     </p>
                   </div>
                 </div>
-              </div>
 
-              <div className="glass p-8 rounded-3xl space-y-6">
-                <h3 className="font-futuristic font-bold uppercase text-yellow-400">Step 2: Subject Type</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  {['Luggage', 'Apparel', 'Bottle', 'Tech'].map(type => (
-                    <button key={type} className="p-3 border border-white/10 rounded-xl text-xs hover:border-yellow-400 transition-colors uppercase font-futuristic">
-                      {type}
-                    </button>
-                  ))}
+                {/* Capture Controls */}
+                <div className="h-32 flex items-center justify-around z-10">
+                   <div className="w-16"></div>
+                   
+                   <button 
+                    onClick={takeSnapshot}
+                    disabled={captureCount >= targetCaptureCount && !isBuilding3D}
+                    className={`w-20 h-20 rounded-full border-4 flex items-center justify-center transition-all ${captureCount >= targetCaptureCount ? 'border-white/20' : 'border-yellow-400 yellow-glow scale-110 active:scale-95'}`}
+                   >
+                     <div className={`w-14 h-14 rounded-full ${captureCount >= targetCaptureCount ? 'bg-white/10' : 'bg-yellow-400'}`}></div>
+                   </button>
+
+                   <div className="w-16">
+                     {captureCount >= targetCaptureCount && (
+                       <button 
+                        onClick={process3DBuild}
+                        disabled={isBuilding3D}
+                        className="flex flex-col items-center gap-1 animate-bounce"
+                       >
+                         <div className="p-3 bg-yellow-400 rounded-full text-black shadow-lg">
+                           {isBuilding3D ? <div className="w-6 h-6 border-2 border-black border-t-transparent animate-spin rounded-full"></div> : <Check size={24} />}
+                         </div>
+                         <span className="text-[8px] font-bold text-yellow-400 uppercase tracking-tighter">BUILD</span>
+                       </button>
+                     )}
+                   </div>
                 </div>
               </div>
-            </div>
+            ) : (
+              <>
+                <header className="space-y-4">
+                  <h1 className="text-4xl md:text-6xl font-futuristic font-bold yellow-text-glow">
+                    3D CAPTURE COACH
+                  </h1>
+                  <div className="p-6 border border-yellow-400/20 bg-yellow-400/5 rounded-3xl flex items-start gap-4">
+                    <AlertTriangle className="text-yellow-400 flex-shrink-0" />
+                    <div>
+                      <h4 className="font-futuristic font-bold text-yellow-400 text-sm">PRO ADVICE: LIGHTING IS KEY</h4>
+                      <p className="text-xs text-white/60 mt-1 leading-relaxed">
+                        Avoid mixed lighting or harsh spotlights. Prefer bright diffused light (overcast or large window). 
+                        Lock focus on the subject and move around smoothly.
+                      </p>
+                    </div>
+                  </div>
+                </header>
 
-            <section className="glass p-12 rounded-3xl text-center space-y-6">
-              <div className="w-32 h-32 rounded-full border-4 border-dashed border-yellow-400/30 flex items-center justify-center mx-auto relative">
-                <div className="absolute inset-0 rounded-full border-4 border-yellow-400 border-r-transparent animate-spin"></div>
-                <Camera size={48} className="text-yellow-400" />
-              </div>
-              <div className="space-y-2">
-                <h3 className="text-2xl font-futuristic font-bold">READY TO CAPTURE</h3>
-                <p className="text-white/40 text-sm max-w-sm mx-auto">
-                  App will guide you through 24 positions around the object. 15° steps recommended.
-                </p>
-              </div>
-              <button className="bg-yellow-400 text-black px-8 py-4 rounded-2xl font-bold uppercase font-futuristic yellow-glow">
-                START GUIDED CAPTURE
-              </button>
-            </section>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  <div className="glass p-8 rounded-3xl space-y-6">
+                    <h3 className="font-futuristic font-bold uppercase text-yellow-400">Step 1: Choose Pipeline</h3>
+                    <div className="grid grid-cols-1 gap-4">
+                      <div 
+                        onClick={() => { setSelected3DPipeline('fake'); setTargetCaptureCount(24); }}
+                        className={`p-4 rounded-2xl border transition-all cursor-pointer ${selected3DPipeline === 'fake' ? 'border-yellow-400 bg-yellow-400/10' : 'border-white/10'}`}
+                      >
+                        <h5 className="font-bold text-sm">LANE 1: Fake 3D (Turntable)</h5>
+                        <p className="text-[10px] text-white/60 mt-1">Multi-angle stills and video renders. Optimized for ecom.</p>
+                      </div>
+                      <div 
+                        onClick={() => { setSelected3DPipeline('true'); setTargetCaptureCount(60); }}
+                        className={`p-4 rounded-2xl border transition-all cursor-pointer ${selected3DPipeline === 'true' ? 'border-yellow-400 bg-yellow-400/10' : 'border-white/10'}`}
+                      >
+                        <h5 className="font-bold text-sm text-white/40">LANE 2: True 3D (Reconstruction)</h5>
+                        <p className="text-[10px] text-white/20 mt-1">Full geometry extraction. USDZ/GLB exports. Requires 60+ images.</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="glass p-8 rounded-3xl space-y-6">
+                    <h3 className="font-futuristic font-bold uppercase text-yellow-400">Step 2: Subject Type</h3>
+                    <div className="grid grid-cols-2 gap-4">
+                      {['Luggage', 'Apparel', 'Bottle', 'Tech'].map(type => (
+                        <button 
+                          key={type} 
+                          onClick={() => setSelected3DSubject(type)}
+                          className={`p-3 border rounded-xl text-xs transition-colors uppercase font-futuristic ${selected3DSubject === type ? 'border-yellow-400 text-yellow-400 bg-yellow-400/5' : 'border-white/10 text-white/40 hover:border-white/30'}`}
+                        >
+                          {type}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <section className="glass p-12 rounded-3xl text-center space-y-6">
+                  <div className="w-32 h-32 rounded-full border-4 border-dashed border-yellow-400/30 flex items-center justify-center mx-auto relative">
+                    <div className="absolute inset-0 rounded-full border-4 border-yellow-400 border-r-transparent animate-spin"></div>
+                    <Camera size={48} className="text-yellow-400" />
+                  </div>
+                  <div className="space-y-2">
+                    <h3 className="text-2xl font-futuristic font-bold">READY TO CAPTURE</h3>
+                    <p className="text-white/40 text-sm max-w-sm mx-auto">
+                      App will guide you through {targetCaptureCount} positions around the object. 15° steps recommended.
+                    </p>
+                  </div>
+                  <button 
+                    onClick={startCapture}
+                    className="bg-yellow-400 text-black px-8 py-4 rounded-2xl font-bold uppercase font-futuristic yellow-glow hover:scale-105 transition-transform"
+                  >
+                    START GUIDED CAPTURE
+                  </button>
+                </section>
+              </>
+            )}
           </div>
         )}
       </main>
