@@ -1,8 +1,9 @@
 {
-  "name": "Flow Creative Studio",
+  "name": "Flow Fidelity Creative Studio",
   "description": "A futuristic iPhone-ready content creation suite for high-fidelity photo, video, and 3D outputs using the Gemini API.",
   "requestFramePermissions": [
     "camera",
     "microphone"
-  ]
+  ],
+  "majorCapabilities": []
 }

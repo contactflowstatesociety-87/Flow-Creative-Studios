@@ -11,23 +11,37 @@ export class GeminiService {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     
     const brandMappings: Record<string, string> = {
-      'NIKE': 'Dynamic athletic energy, high-contrast dramatic shadows, performance textures, sweat and intensity, gritty sportswear aesthetic.',
-      'Apple': 'Ultra-clean minimalism, soft studio lighting, high-tech elegance, neutral gray and white backgrounds, perfect product reflections.',
-      'North Face': 'Rugged adventure, earthy natural tones, overcast mountain lighting, waterproof textures, durability and utility.',
-      'Liquid Death': 'Punk rock grit, heavy metal aesthetic, aggressive lighting, high contrast, dark and edgy product photography.',
-      'Malbon Golf': 'Vintage golf heritage, casual luxury lifestyle, lush greens, soft morning sun, sophisticated casual sportswear.'
+      'NIKE': 'High-energy athletic aesthetic, high-contrast dramatic shadows, performance textures, sweat and intensity, gritty high-performance lighting. Focus on energy and mood, do not add any brand-specific products.',
+      'Apple': 'Ultra-clean minimalism, soft studio lighting, high-tech elegance, neutral gray and white backgrounds, perfect reflections. Focus on the pristine aesthetic, do not add any brand-specific products.',
+      'North Face': 'Rugged adventure, earthy natural tones, overcast mountain lighting, waterproof textures, durability and utility. Focus on the outdoor atmosphere, do not add any brand-specific products.',
+      'Liquid Death': 'Gritty punk-rock aesthetic, heavy metal aesthetic, aggressive lighting, high contrast, dark and edgy visual style. Focus on the lighting and mood, do not add any brand-specific products.',
+      'Malbon Golf': 'Vintage golf heritage, casual luxury lifestyle, lush greens, soft morning sun, sophisticated casual vibe. Focus on the heritage atmosphere, do not add any brand-specific products.'
     };
 
-    const brandInstruction = data.brandPreset !== 'None' ? `BRAND STYLE: ${brandMappings[data.brandPreset]}` : '';
+    const styleOnlyInstruction = data.styleOnly 
+      ? "STYLE-ONLY MODE ACTIVE: Use ONLY the visual aesthetic (lighting, color, mood) of the brand. DO NOT include any physical objects, logos, or products associated with that brand. If the style is 'Liquid Death', do NOT add cans. If 'Nike', do NOT add shoes."
+      : "INTEGRATED BRANDING: Blend the brand's aesthetic with the subject naturally.";
+
+    const brandInstruction = data.brandPreset !== 'None' ? `AESTHETIC STYLE PRESET: ${brandMappings[data.brandPreset]}` : '';
     const fidelityInstruction = data.creativeDeviation 
-      ? "Creativity encouraged: Experiment with composition and lighting while keeping the core subject recognizable."
-      : "100% FIDELITY LOCK: Absolutely zero deviation from reference images. Replicate every zipper, seam, logo, and texture precisely.";
+      ? "Creativity encouraged: Experiment with composition and lighting while keeping the core subject recognizable. Do not add new products or brands."
+      : "100% FIDELITY LOCK: Absolutely zero deviation from reference images. Replicate every zipper, seam, logo, and texture precisely. DO NOT add any new objects, logos, or products that are not in the reference.";
 
     const systemInstruction = `You are a World-Class Creative Director and Technical Photographer.
     Generate a literal, physical description for 8K rendering.
-    Focus on Material Physics, Light Interaction, and Brand DNA.
+    Focus on Material Physics, Light Interaction, and Visual Aesthetic.
     ${fidelityInstruction}
     ${brandInstruction}
+    ${styleOnlyInstruction}
+    
+    CRITICAL NEGATIVE CONSTRAINTS:
+    - DO NOT include any brand logos, specific brand products, or unrelated items associated with the style preset.
+    - DO NOT add any cans, bottles, shoes, computers, or other objects that are not in the reference image.
+    - If the style is "Liquid Death", do NOT add any cans or water bottles.
+    - If the style is "Nike", do NOT add any shoes or swoosh logos.
+    - If the style is "Apple", do NOT add any computers or apple logos.
+    - ONLY stylize the subject provided in the reference image.
+    
     STYLIZATION: level ${data.stylization}/100.
     CHAOS: level ${data.chaos}/100.`;
 
@@ -49,7 +63,9 @@ export class GeminiService {
       Lighting: ${data.lighting}
       Style: ${data.style}, Location: ${data.scene}.
       
-      Requirements: Photorealistic, 8K details, raw texture synthesis, exact material match.`,
+      Requirements: Photorealistic, 8K details, raw texture synthesis, exact material match.
+      
+      NEGATIVE CONSTRAINTS: No extra objects, no brand products, no logos, no hallucinations.`,
       config: config
     });
     
@@ -145,14 +161,18 @@ export class GeminiService {
     return imageUrl;
   }
 
-  async generateVideo(prompt: string, aspectRatio: string, references: string[]): Promise<string> {
+  async generateVideo(prompt: string, aspectRatio: string, references: string[], styleOnly: boolean = false): Promise<string> {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const model = 'veo-3.1-generate-preview';
     const targetAspect = aspectRatio === '9:16' ? '9:16' : '16:9';
     
+    const styleOnlyPrompt = styleOnly 
+      ? "STYLE-ONLY MODE: Apply ONLY lighting and mood. DO NOT add any new objects, cans, or logos. " 
+      : "";
+
     const config: any = {
       model: model,
-      prompt: `100% PRODUCT FIDELITY MOTION, NO DISTORTION: ${prompt}`,
+      prompt: `${styleOnlyPrompt}100% PRODUCT FIDELITY MOTION, NO DISTORTION, NO HALLUCINATIONS, NO EXTRA OBJECTS, NO BRAND LOGOS: ${prompt}`,
       config: {
         numberOfVideos: 1,
         resolution: '720p',
@@ -207,6 +227,58 @@ export class GeminiService {
       return JSON.parse(response.text || "{}");
     } catch (e) {
       return {};
+    }
+  }
+
+  /**
+   * 3D Reconstruction Analysis.
+   * Uses 8 reference photos to create a high-fidelity reconstruction plan.
+   */
+  async generate3DRecon(photos: { angle: string; url: string }[]): Promise<any> {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    
+    const parts: any[] = [
+      { text: "Analyze these 8 angles of the subject. Create a 100% Identity Lock Reconstruction Plan for a high-fidelity 3D model. Identify every texture, seam, logo, and material detail from all angles." }
+    ];
+
+    photos.forEach(p => {
+      const parts_arr = p.url.split(',');
+      if (parts_arr.length > 1) {
+        const mimeType = p.url.split(';')[0].split(':')[1];
+        const base64Data = parts_arr[1];
+        parts.push({
+          inlineData: {
+            data: base64Data,
+            mimeType: mimeType
+          }
+        });
+      }
+    });
+
+    const response = await ai.models.generateContent({
+      model: "gemini-3-pro-preview",
+      contents: { parts: parts },
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            reconstructionId: { type: Type.STRING },
+            materialAnalysis: { type: Type.ARRAY, items: { type: Type.STRING } },
+            geometryComplexity: { type: Type.STRING },
+            textureMaps: { type: Type.ARRAY, items: { type: Type.STRING } },
+            identityLockStatus: { type: Type.STRING },
+            iphoneIntegrationReady: { type: Type.BOOLEAN }
+          },
+          required: ['reconstructionId', 'materialAnalysis', 'geometryComplexity', 'textureMaps', 'identityLockStatus', 'iphoneIntegrationReady']
+        }
+      }
+    });
+
+    try {
+      return JSON.parse(response.text || "{}");
+    } catch (e) {
+      return { error: "Reconstruction failed" };
     }
   }
 }

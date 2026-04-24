@@ -17,6 +17,7 @@ import {
   ASPECT_RATIOS, 
   BRAND_PRESETS,
   QUALITY_OPTIONS,
+  RECON_ANGLES,
   SMART_SUGGESTION_RULES 
 } from './constants';
 import { gemini } from './geminiService';
@@ -90,6 +91,11 @@ const App: React.FC = () => {
   const [editingResultId, setEditingResultId] = useState<string | null>(null);
   const [editInstruction, setEditInstruction] = useState('');
 
+  const [reconPhotos, setReconPhotos] = useState<{ angle: string; url: string }[]>(
+    RECON_ANGLES.map(angle => ({ angle, url: '' }))
+  );
+  const [reconResult, setReconResult] = useState<any>(null);
+
   const [selection, setSelection] = useState<SelectionState>({
     subjectType: 'Product',
     angle: PHOTO_ANGLES[0].label,
@@ -105,7 +111,8 @@ const App: React.FC = () => {
     quality: '4K',
     chaos: 0,
     stylization: 50,
-    modelSelection: 'gemini-3-pro-preview'
+    modelSelection: 'gemini-3-pro-preview',
+    styleOnly: false
   });
 
   const [prompt, setPrompt] = useState('');
@@ -174,7 +181,7 @@ const App: React.FC = () => {
         }));
         setResults(prev => [...newResults, ...prev]);
       } else if (mode === 'video') {
-        const videoUrl = await gemini.generateVideo(finalPrompt, selection.aspectRatio, references);
+        const videoUrl = await gemini.generateVideo(finalPrompt, selection.aspectRatio, references, selection.styleOnly);
         const videoResult: GenerationResult = {
           id: Math.random().toString(),
           projectId: 'current',
@@ -243,11 +250,33 @@ const App: React.FC = () => {
 
   const process3DBuild = async () => {
     setIsBuilding3D(true);
-    setTimeout(() => {
+    try {
+      const result = await gemini.generate3DRecon(reconPhotos.filter(p => p.url !== ''));
+      setReconResult(result);
       setIsBuilding3D(false);
       setIsCapturing(false);
-      setMode('gallery');
-    }, 5000);
+    } catch (err: any) {
+      alert(`Reconstruction Failed: ${err.message}`);
+      setIsBuilding3D(false);
+    }
+  };
+
+  const handleReconPhotoUpload = (angle: string, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setReconPhotos(prev => prev.map(p => p.angle === angle ? { ...p, url: reader.result as string } : p));
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const captureReconPhoto = (angle: string) => {
+    // Simulated capture - in a real app this would use the camera API
+    // For this demo, we'll just trigger a file input or show a flash
+    setShowShutterFlash(true);
+    setTimeout(() => setShowShutterFlash(false), 100);
+    // In a real implementation, this would grab the current frame from a video ref
   };
 
   if (isCheckingKey) return <div className="min-h-screen bg-black flex items-center justify-center font-futuristic text-yellow-400">CONNECTING TO STUDIO...</div>;
@@ -416,6 +445,10 @@ const App: React.FC = () => {
                         <input type="range" min="0" max="100" value={selection.chaos} onChange={(e) => setSelection({...selection, chaos: parseInt(e.target.value)})} className="w-full accent-yellow-400 bg-white/10 rounded-lg h-1.5" />
                       </div>
                       <div className="flex items-center justify-between p-3 bg-white/5 rounded-2xl border border-white/10">
+                        <div className="flex items-center gap-3"><ZapOff size={18} className={selection.styleOnly ? 'text-yellow-400' : 'text-white/40'} /><span className="text-xs uppercase font-black tracking-widest">Style Only</span></div>
+                        <button onClick={() => setSelection({...selection, styleOnly: !selection.styleOnly})} className={`w-12 h-6 rounded-full p-1 transition-colors ${selection.styleOnly ? 'bg-yellow-400' : 'bg-white/10'}`}><div className={`w-4 h-4 bg-black rounded-full transition-transform ${selection.styleOnly ? 'translate-x-6' : 'translate-x-0'}`} /></button>
+                      </div>
+                      <div className="flex items-center justify-between p-3 bg-white/5 rounded-2xl border border-white/10">
                         <div className="flex items-center gap-3"><Cpu size={18} className={selection.thinkingMode ? 'text-yellow-400' : 'text-white/40'} /><span className="text-xs uppercase font-black tracking-widest">Thinking</span></div>
                         <button onClick={() => setSelection({...selection, thinkingMode: !selection.thinkingMode})} className={`w-12 h-6 rounded-full p-1 transition-colors ${selection.thinkingMode ? 'bg-yellow-400' : 'bg-white/10'}`}><div className={`w-4 h-4 bg-black rounded-full transition-transform ${selection.thinkingMode ? 'translate-x-6' : 'translate-x-0'}`} /></button>
                       </div>
@@ -463,43 +496,144 @@ const App: React.FC = () => {
         )}
 
         {mode === '3d' && (
-          <div className="space-y-12 h-full pb-32">
-            {isCapturing ? (
-              <div className="fixed inset-0 bg-black z-[100] flex flex-col p-6 overflow-hidden">
-                {showShutterFlash && <div className="fixed inset-0 bg-white z-[200] opacity-90 transition-opacity"></div>}
-                <div className="flex justify-between items-center z-10"><button onClick={() => setIsCapturing(false)} className="p-4 text-white/60 hover:text-white"><X size={28} /></button><h2 className="text-xl font-futuristic font-bold yellow-text-glow uppercase tracking-widest">RECON CAPTURE</h2><div className="w-10"></div></div>
-                <div className="flex-1 my-8 border-2 border-dashed border-white/20 rounded-3xl relative flex flex-col items-center justify-center bg-zinc-900 overflow-hidden">
-                  <div className="absolute top-8 left-8 right-8 flex flex-col gap-4">
-                    <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-[10px] font-black uppercase transition-all ${lightingStatus === 'OK' ? 'border-green-500/30 text-green-400 bg-green-500/5' : 'border-red-500/50 text-red-400 bg-red-500/20 animate-pulse'}`}>
-                      <Sun size={14} /> Lighting: {lightingStatus}
-                    </div>
-                    {missingAngles.length > 0 && (
-                      <div className="flex flex-wrap gap-2">
-                        <span className="text-[8px] text-white/40 uppercase font-bold px-2 py-1 bg-white/5 rounded">Gaps:</span>
-                        {missingAngles.map(a => <span key={a} className="text-[8px] text-yellow-400 uppercase font-black px-2 py-1 bg-yellow-400/10 rounded border border-yellow-400/20">{a}</span>)}
-                      </div>
-                    )}
-                  </div>
-                  <div className="w-full h-full opacity-5 pointer-events-none absolute inset-0 grid grid-cols-8 grid-rows-8 border border-white/10">
-                    {Array.from({ length: 64 }).map((_, i) => <div key={i} className="border border-white/10"></div>)}
-                  </div>
-                  <div className="bg-black/80 backdrop-blur-xl border border-white/10 rounded-2xl p-6 space-y-3 absolute bottom-8 left-8 right-8">
-                     <div className="flex justify-between items-center"><span className="text-xs font-futuristic uppercase text-white/60 tracking-widest">Coverage Loop</span><span className="text-sm font-futuristic text-yellow-400 font-bold">{captureCount} / {targetCaptureCount}</span></div>
-                     <div className="h-2 w-full bg-white/10 rounded-full overflow-hidden"><div className="h-full bg-yellow-400 transition-all duration-300" style={{ width: `${(captureCount / targetCaptureCount) * 100}%` }}></div></div>
-                  </div>
+          <div className="space-y-12 h-full pb-32 animate-in fade-in duration-500">
+            <header className="space-y-2">
+              <div className="flex items-center gap-3 text-yellow-400 mb-4">
+                <Box size={20} />
+                <span className="text-xs font-black tracking-widest uppercase">100% IDENTITY LOCK RECON v2.0</span>
+              </div>
+              <h1 className="text-4xl md:text-7xl font-futuristic font-bold yellow-text-glow leading-none tracking-tighter">3D WORKSTATION</h1>
+              <p className="text-white/50 text-sm tracking-widest uppercase italic font-medium">Multi-Angle High-Fidelity Reconstruction Engine</p>
+            </header>
+
+            {reconResult ? (
+              <div className="glass p-8 rounded-[3rem] space-y-8 animate-in zoom-in-95 duration-500">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-3xl font-futuristic font-bold text-yellow-400 uppercase">Reconstruction Complete</h2>
+                  <button onClick={() => setReconResult(null)} className="text-xs text-white/40 hover:text-white uppercase font-black">New Recon</button>
                 </div>
-                <div className="h-32 flex items-center justify-around z-10">
-                   <div className="w-16"></div>
-                   <button onClick={takeSnapshot} disabled={captureCount >= targetCaptureCount} className={`w-24 h-24 rounded-full border-4 flex items-center justify-center transition-all ${captureCount >= targetCaptureCount ? 'border-white/10 opacity-20' : 'border-yellow-400 yellow-glow scale-110 active:scale-95'}`}><div className={`w-16 h-16 rounded-full bg-yellow-400`}></div></button>
-                   <div className="w-16">{captureCount >= targetCaptureCount && <button onClick={process3DBuild} className="p-4 bg-yellow-400 rounded-full text-black yellow-glow hover:scale-110 transition-transform"><CloudLightning size={24} /></button>}</div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  <div className="aspect-square glass rounded-3xl flex items-center justify-center relative overflow-hidden group">
+                    <div className="absolute inset-0 bg-gradient-to-br from-yellow-400/10 to-transparent animate-pulse" />
+                    <Box size={120} className="text-yellow-400" />
+                    <div className="absolute bottom-6 left-6 right-6 p-4 bg-black/60 backdrop-blur rounded-2xl border border-white/10">
+                      <div className="flex items-center gap-2 text-[10px] font-black text-yellow-400 uppercase tracking-widest mb-1">
+                        <Wifi size={12} /> Live Preview Ready
+                      </div>
+                      <p className="text-[10px] text-white/60 uppercase">iPhone Integration: {reconResult.iphoneIntegrationReady ? 'READY' : 'PENDING'}</p>
+                    </div>
+                  </div>
+                  <div className="space-y-6">
+                    <div className="space-y-2">
+                      <h4 className="text-[10px] uppercase font-black text-white/40 tracking-widest">Identity Lock Status</h4>
+                      <div className="px-4 py-2 bg-yellow-400/10 border border-yellow-400/30 rounded-xl text-yellow-400 text-xs font-black uppercase">{reconResult.identityLockStatus}</div>
+                    </div>
+                    <div className="space-y-2">
+                      <h4 className="text-[10px] uppercase font-black text-white/40 tracking-widest">Material Analysis</h4>
+                      <div className="flex flex-wrap gap-2">
+                        {reconResult.materialAnalysis.map((m: string, i: number) => (
+                          <span key={i} className="px-3 py-1 bg-white/5 border border-white/10 rounded-full text-[10px] text-white/60 uppercase font-bold">{m}</span>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <h4 className="text-[10px] uppercase font-black text-white/40 tracking-widest">Texture Maps Generated</h4>
+                      <div className="grid grid-cols-2 gap-2">
+                        {reconResult.textureMaps.map((t: string, i: number) => (
+                          <div key={i} className="px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-[8px] text-white/40 uppercase font-black flex items-center gap-2">
+                            <Check size={10} className="text-yellow-400" /> {t}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <button className="w-full bg-yellow-400 text-black py-4 rounded-2xl font-black uppercase text-xs yellow-glow flex items-center justify-center gap-2">
+                      <Download size={16} /> Export for iPhone (USDZ)
+                    </button>
+                  </div>
                 </div>
               </div>
             ) : (
-              <div className="glass p-12 rounded-[3rem] flex flex-col justify-center items-center text-center space-y-8 max-w-lg mx-auto mt-20 border-yellow-400/20 shadow-2xl">
-                <Box size={100} className="text-yellow-400 animate-pulse" />
-                <h1 className="text-4xl font-futuristic font-bold yellow-text-glow leading-tight">3D RECON COACH</h1>
-                <p className="text-white/40 text-sm uppercase tracking-widest font-medium">Guided high-fidelity product scanning</p>
-                <button onClick={startCapture} className="w-full bg-yellow-400 text-black py-6 rounded-2xl font-black uppercase font-futuristic yellow-glow hover:scale-105 transition-all shadow-xl shadow-yellow-400/20">Begin Recon Sequence</button>
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <div className="lg:col-span-2 space-y-8">
+                  <section className="glass p-8 rounded-[3rem] space-y-6">
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-futuristic font-semibold uppercase text-yellow-400 flex items-center gap-2">
+                        <Camera size={18} /> Multi-Angle Capture
+                      </h3>
+                      <span className="text-[10px] font-black text-white/40 uppercase tracking-widest">
+                        {reconPhotos.filter(p => p.url !== '').length} / 8 Angles
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      {reconPhotos.map((photo, idx) => (
+                        <div key={idx} className="space-y-2">
+                          <label className="text-[8px] uppercase font-black text-white/40 px-1 tracking-widest">{photo.angle}</label>
+                          <div className="aspect-square rounded-2xl border border-white/10 bg-white/5 relative group overflow-hidden hover:border-yellow-400 transition-all">
+                            {photo.url ? (
+                              <>
+                                <img src={photo.url} className="w-full h-full object-cover" />
+                                <button onClick={() => setReconPhotos(prev => prev.map(p => p.angle === photo.angle ? { ...p, url: '' } : p))} className="absolute inset-0 bg-red-500/80 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                                  <Trash2 size={20} />
+                                </button>
+                              </>
+                            ) : (
+                              <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+                                <label className="cursor-pointer p-2 bg-white/10 rounded-full hover:bg-yellow-400 hover:text-black transition-all">
+                                  <Upload size={16} />
+                                  <input type="file" className="hidden" onChange={(e) => handleReconPhotoUpload(photo.angle, e)} />
+                                </label>
+                                <button onClick={() => captureReconPhoto(photo.angle)} className="p-2 bg-white/10 rounded-full hover:bg-yellow-400 hover:text-black transition-all">
+                                  <Camera size={16} />
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                </div>
+
+                <aside className="space-y-8">
+                  <section className="glass p-8 rounded-[3rem] space-y-6 border-yellow-400/10">
+                    <div className="space-y-4">
+                      <h3 className="font-futuristic font-semibold uppercase text-yellow-400 flex items-center gap-2">
+                        <ShieldCheck size={18} /> Identity Lock
+                      </h3>
+                      <p className="text-[10px] text-white/40 uppercase leading-relaxed">
+                        Identity Lock ensures 100% geometric and textural fidelity. By providing 8 distinct angles, the engine creates a perfect digital twin ready for iPhone integration.
+                      </p>
+                    </div>
+                    <div className="space-y-4 pt-4 border-t border-white/10">
+                      <div className="flex items-center gap-3 text-yellow-400">
+                        <CheckCircle2 size={16} />
+                        <span className="text-[10px] font-black uppercase tracking-widest">USDZ Ready</span>
+                      </div>
+                      <div className="flex items-center gap-3 text-yellow-400">
+                        <CheckCircle2 size={16} />
+                        <span className="text-[10px] font-black uppercase tracking-widest">8K Texture Maps</span>
+                      </div>
+                      <div className="flex items-center gap-3 text-yellow-400">
+                        <CheckCircle2 size={16} />
+                        <span className="text-[10px] font-black uppercase tracking-widest">AR Quick Look</span>
+                      </div>
+                    </div>
+                    <button 
+                      onClick={process3DBuild}
+                      disabled={isBuilding3D || reconPhotos.filter(p => p.url !== '').length < 4}
+                      className={`w-full py-6 rounded-2xl font-black uppercase font-futuristic transition-all yellow-glow flex items-center justify-center gap-3 ${isBuilding3D || reconPhotos.filter(p => p.url !== '').length < 4 ? 'bg-white/10 text-white/20 cursor-not-allowed' : 'bg-yellow-400 text-black hover:scale-105 shadow-xl shadow-yellow-400/20'}`}
+                    >
+                      {isBuilding3D ? (
+                        <><div className="w-5 h-5 border-2 border-black border-t-transparent rounded-full animate-spin"></div> RECONSTRUCTING...</>
+                      ) : (
+                        <><CloudLightning size={20} /> INITIATE RECON</>
+                      )}
+                    </button>
+                    {reconPhotos.filter(p => p.url !== '').length < 4 && (
+                      <p className="text-[8px] text-center text-red-400 uppercase font-black animate-pulse">Min. 4 angles required for lock</p>
+                    )}
+                  </section>
+                </aside>
               </div>
             )}
           </div>

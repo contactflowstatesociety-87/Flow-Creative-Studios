@@ -91,6 +91,17 @@ export const QUALITY_OPTIONS = ['2K', '4K', '6K'];
 export const ASPECT_RATIOS = ['1:1', '2:3', '3:2', '3:4', '4:3', '9:16', '16:9', '21:9'];
 export const VIDEO_DURATIONS = ['6s', '9s', '15s'];
 
+export const RECON_ANGLES = [
+  'Front View',
+  'Back View',
+  'Left Side',
+  'Right Side',
+  'Top View',
+  'Bottom View',
+  'Macro Logo',
+  'Macro Texture'
+];
+
 export const SMART_SUGGESTION_RULES = [
   { scene: 'Urban Commuter Street', style: 'Tech Futuristic', lighting: 'Neon Night City', suggestion: 'Try using "Telephoto Compression" for a cinematic cyberpunk look.' },
   { scene: 'Modern Office Lobby', style: 'Luxury Minimal', lighting: 'Soft Studio Key', suggestion: 'Perfect for hero product shots. Use "85mm Portrait" for depth.' },

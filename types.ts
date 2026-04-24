@@ -26,6 +26,7 @@ export interface SelectionState {
   chaos: number;
   stylization: number;
   modelSelection: string;
+  styleOnly: boolean;
 }
 
 export interface ProjectMetadata {
@@ -34,6 +35,7 @@ export interface ProjectMetadata {
   mode: Mode;
   timestamp: number;
   references: string[]; // base64 images
+  reconPhotos?: { angle: string; url: string }[];
   productUrl?: string;
   selections: SelectionState;
   finalPrompt: string;
