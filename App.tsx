@@ -95,6 +95,7 @@ const App: React.FC = () => {
     RECON_ANGLES.map(angle => ({ angle, url: '' }))
   );
   const [reconResult, setReconResult] = useState<any>(null);
+  const fileInputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
 
   const [selection, setSelection] = useState<SelectionState>({
     subjectType: 'Product',
@@ -272,11 +273,28 @@ const App: React.FC = () => {
   };
 
   const captureReconPhoto = (angle: string) => {
-    // Simulated capture - in a real app this would use the camera API
-    // For this demo, we'll just trigger a file input or show a flash
-    setShowShutterFlash(true);
-    setTimeout(() => setShowShutterFlash(false), 100);
-    // In a real implementation, this would grab the current frame from a video ref
+    // Trigger the hidden file input with 'capture' attribute to open the device camera
+    if (fileInputRefs.current[angle]) {
+      fileInputRefs.current[angle]?.click();
+    }
+  };
+
+  const download3DAsset = async (format: 'USDZ' | 'MP4') => {
+    if (!reconResult) return;
+    
+    // Create a dummy blob representing the 3D data or Turntable render
+    // In a real integration, the Gemini service would return these URIs
+    const content = `3D Recon Data: ${reconResult.reconstructionId}`;
+    const blob = new Blob([content], { type: format === 'USDZ' ? 'model/vnd.usdz+zip' : 'video/mp4' });
+    const url = URL.createObjectURL(blob);
+    
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `recon-${reconResult.reconstructionId}.${format.toLowerCase()}`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   if (isCheckingKey) return <div className="min-h-screen bg-black flex items-center justify-center font-futuristic text-yellow-400">CONNECTING TO STUDIO...</div>;
@@ -546,9 +564,20 @@ const App: React.FC = () => {
                         ))}
                       </div>
                     </div>
-                    <button className="w-full bg-yellow-400 text-black py-4 rounded-2xl font-black uppercase text-xs yellow-glow flex items-center justify-center gap-2">
-                      <Download size={16} /> Export for iPhone (USDZ)
-                    </button>
+                    <div className="grid grid-cols-2 gap-4">
+                      <button 
+                        onClick={() => download3DAsset('USDZ')}
+                        className="w-full bg-white/10 hover:bg-white/20 text-white py-4 rounded-2xl font-black uppercase text-xs transition-all flex items-center justify-center gap-2 border border-white/10"
+                      >
+                        <Box size={16} /> USDZ (AR)
+                      </button>
+                      <button 
+                        onClick={() => download3DAsset('MP4')}
+                        className="w-full bg-yellow-400 text-black py-4 rounded-2xl font-black uppercase text-xs yellow-glow hover:scale-105 transition-all flex items-center justify-center gap-2"
+                      >
+                        <Video size={16} /> MP4 (Video)
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -580,11 +609,24 @@ const App: React.FC = () => {
                               <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
                                 <label className="cursor-pointer p-2 bg-white/10 rounded-full hover:bg-yellow-400 hover:text-black transition-all">
                                   <Upload size={16} />
-                                  <input type="file" className="hidden" onChange={(e) => handleReconPhotoUpload(photo.angle, e)} />
+                                  <input 
+                                    type="file" 
+                                    accept="image/*" 
+                                    className="hidden" 
+                                    onChange={(e) => handleReconPhotoUpload(photo.angle, e)} 
+                                  />
                                 </label>
                                 <button onClick={() => captureReconPhoto(photo.angle)} className="p-2 bg-white/10 rounded-full hover:bg-yellow-400 hover:text-black transition-all">
                                   <Camera size={16} />
                                 </button>
+                                <input 
+                                  ref={el => fileInputRefs.current[photo.angle] = el}
+                                  type="file" 
+                                  accept="image/*" 
+                                  capture="environment" 
+                                  className="hidden" 
+                                  onChange={(e) => handleReconPhotoUpload(photo.angle, e)} 
+                                />
                               </div>
                             )}
                           </div>
